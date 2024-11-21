@@ -30,8 +30,7 @@ execute:
 ```{r}
 delivery <- read.csv('Data/doordash.csv')
 
-delivery %>%
-  glimpse()
+glimpse(delivery)
 ```
 
 ### Variables in the dataset
