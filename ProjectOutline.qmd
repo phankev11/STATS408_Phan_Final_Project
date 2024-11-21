@@ -1,0 +1,127 @@
+---
+title: "Project Outline"
+author: "Kevin Phan"
+format: 
+  html:
+    self-contained: true
+    embed-resources: true
+editor: visual
+execute: 
+  echo: true
+  include: true
+---
+
+## Introduction
+
+-   I plan on using the [DoorDash ETA Prediction](https://www.kaggle.com/datasets/dharun4772/doordash-eta-prediction/data) dataset to create my linear model for the project.
+
+    -   Contains subset of data on DoorDash deliveries from early 2015 in the US West Coast
+
+-   As an avid DoorDash user, I am interested to see if delivery time can be modeled by some of the given variables.
+
+-   Based on the variables given, I have a couple of ideas of types of models that I can try to create
+
+    -   Predict delivery time based on some combination of the variables in the dataset
+
+    -   Predict if an order is late (i.e., actual delivery time is greater than estimated delivery time) based on some combination of variables in the dataset
+
+## Data Exploration and Preparation
+
+```{r}
+delivery <- read.csv('Data/doordash.csv')
+
+delivery %>%
+  glimpse()
+```
+
+### Variables in the dataset
+
+#### Time features
+
+-   `market_id`: given ID number for each city/region DoorDash operates in
+
+-   `created_at`: time order is submitted to DoorDash; *UTC*
+
+-   `actual_delivery_time`: time order is delivered; *UTC*
+
+#### Store features
+
+-   `store_id`: given ID number for each unique restaurant
+
+-   `store_primary_category`: restaurant's cuisine
+
+-   `order_protocol`: mode DoorDash order is received by restaurant
+
+#### Order features
+
+-   `subtotal`: value of order submitted; *\\\$0.01 USD*
+
+-   `num_distinct_items`: number of items in order
+
+-   `min_item_price`: price of lowest cost item in order; *\\\$0.01 USD*
+
+-   `max_item_price`: price of highest cost item in order; *\\\$0.01 USD*
+
+#### Market features
+
+-   `total_onshift_dashers`: number of available dashes within 10 miles or store at time of order submission
+
+-   `total_busy_dashers`: subset of `total_onshift_dashers` already working on different order at time of order submission
+
+-   `total_outstanding_orders`: number of orders within 10 miles being processed at time time of order submission
+
+#### DoorDash estimate
+
+-   `estimated_order_place_duration`: estimated time for restaurant to receive order from DoorDash; *seconds*
+
+-   `estimated_store_to_consumer_driving_duration`: estimated travel time between store and customer; *seconds*
+
+### Data preparation
+
+#### Data cleaning needed to be completed
+
+-   Qualifying factors `market_id` and `order_protocol` should they be used in the final model for interpretability
+
+#### Potential feature engineering
+
+-   A variable that holds how long the delivery took (i.e., `actual_delivery_time` $-$ `created_at`) for the model that predicts delivery time and the model that predicts if an order is late
+
+-   A variable that holds estimated delivery time (i.e., `estimated_order_place_duration` $+$ some estimate of store preparing the order $+$ `estimated_store_to_consumer_driving_duration`) for the model that predicts if an order is late
+
+-   A variable that holds hour order was placed to include a time series feature
+
+## Model Building
+
+### Predicting estimated delivery time
+
+-   Multiple linear regression model
+
+-   Once engineered features are mutated to dataset, investigate for non-linear relationship with delivery time
+
+-   Investigate for potential interactions
+
+-   Complete variable selection
+
+-   Check model assumptions to determine if transformations need to occur
+
+### Predicting if an order is late
+
+-   Generalized linear model, binomial family
+
+-   Once engineered features are mutated to dataset, investigate for non-linear relationship with delivery time
+
+-   Investigate for potential interactions
+
+-   Complete variable selection
+
+-   Check goodness of fit to determine if transformations need to occur
+
+## Interpretation of Results
+
+-   Results of whichever model I choose to move forward with
+
+## Evaluation and Discussion
+
+-   Evaluation of whichever model I choose to move forward with
+
+-   Potentially use model I do not move forward with as alternative approach/future work?
