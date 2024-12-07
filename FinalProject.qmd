@@ -170,7 +170,7 @@ Upon investigating the data, I found the following correlations between delivery
 
 -   There appears to be a non-linear relationship between `total_items` and `delivery_time`, so I will include a quadratic term for `total_items` (*See Appendix 2.IV.A.*)
 
--   There appears to be a slight linear relationship between `subtotal` and `delivery_time` (*See Appendix 2.IV.B.*)
+-   There appears to be a slight linear relationship between `max_item_price` and `delivery_time` (*See Appendix 2.IV.B.*)
 
 -   There appears to be a slight linear relationship between `total_busy_dashers` and `delivery_time` (*See Appendix 2.IV.C.*)
 
@@ -178,13 +178,59 @@ Upon investigating the data, I found the following correlations between delivery
 
 -   There appears to be a slight linear relationship between `estimated_order_place_duration` and `delivery_time` (*See Appendix 2.IV.E.*)
 
--   There appears to be a slight difference in `delivery_time` between the different `market_id`s (*See Appendix 2.IV.F.*)
+-   There appears to be a slight linear relationship between `estimated_store_to_consumer_driving_duration` and `delivery_time` (*See Appendix 2.IV.E.*)
 
--   There appears to be a slight difference in `delivery_time` between the `meal_time`s (*See Appendix 2.IV.G.*)
+-   There appears to be a slight difference in `delivery_time` between the different `market_id`s, although the distribution of `delivery_time`s appears similar between the different `market_id`s (*See Appendix 2.IV.G.*)
+
+-   There appears to be a slight difference in `delivery_time` between the different `meal_time`s, and the distribution of `delivery_time`s appears to differ between the different `meal_time`s (*See Appendix 2.IV.H.*)
 
 ## Model Building
 
 ### Full Model
+
+I will start with a full model that includes all of the features I believe may have some sort of effect on delivery time based on the results from the data exploration. That full model to predict delivery time includes the following variables:
+
+-   `total_items` and a quadratic term: intuitively, a larger order should take longer to prepare, thus increasing delivery time
+
+-   `max_item_price`: intuitively, a more expensive restaurant might care more about their preparation, thus taking longer to prepare and increasing delivery time
+
+-   `total_busy_dashers`: intuitively, if more DoorDash drivers are currently working on a different order, then it should take longer for DoorDash to find an available driver, thus increasing delivery time
+
+-   `total_outstanding_orders`: intuitively, if there are more outstanding orders at the moment, then it should take longer to prepare the order, thus increasing delivery time
+
+-   `estimated_store_to_consumer_driving_duration`: intuitively, if it takes longer to get from the restaurant to the customer, delivery time should be longer
+
+-   `market_id`: intuitively, each city has a slightly different average delivery time
+
+-   `meal_time` and an interaction between `meal_time` and the above variables: intuitively, each meal time has a slightly different average delivery time, and the effect on delivery time from from the rest of the features may differ between meal times
+
+To avoid issues with multicollinearity, the following features were left out of the full model:
+
+-   `created_at` and `actual_delivery_time`, which created the features `delivery_time` and `meal_time`
+
+-   `subtotal` and `min_item_price`, which is linearly related to `total_items` and `max_item_price`
+
+-   `total_onshift_dashers`, which `total_busy_dashers` is a subset of
+
+```{r}
+# Create my full model
+mod_full <- lm(delivery_time ~ total_items + I(total_items^2) + max_item_price +
+                               total_busy_dashers + total_outstanding_orders +
+                               estimated_store_to_consumer_driving_duration +
+                               market_id + meal_time + total_items * meal_time +
+                               I(total_items^2) * meal_time + max_item_price *
+                               meal_time + total_busy_dashers * meal_time +
+                               total_outstanding_orders * meal_time +
+                               estimated_store_to_consumer_driving_duration *
+                               meal_time + market_id * meal_time,
+               data = delivery_clean)
+```
+
+### Variable Selection
+
+```{r}
+summary(mod_full)
+```
 
 ## Appendix
 
@@ -201,7 +247,7 @@ delivery_clean %>%
 
 ### 2.IV.A. Scatter plot of delivery time by total items
 
-```{r}
+```{r echo = FALSE}
 # Scatter plot of delivery time by total
 delivery_clean %>%
   ggplot(aes(x = total_items, y = delivery_time)) +
@@ -211,12 +257,12 @@ delivery_clean %>%
   ylim(0, 500)
 ```
 
-### 2.IV.B. Scatter plot of delivery time by subtotal
+### 2.IV.B. Scatter plot of delivery time by max item price
 
-```{r}
+```{r echo = FALSE}
 # Scatter plot of delivery time by subtotal
 delivery_clean %>%
-  ggplot(aes(x = subtotal, y = delivery_time)) +
+  ggplot(aes(x = max_item_price, y = delivery_time)) +
   geom_point() +
   geom_smooth(formula = y ~ x, se = FALSE) +
   ylim(0, 500)
@@ -224,7 +270,7 @@ delivery_clean %>%
 
 ### 2.IV.C. Scatter plot of delivery time by total busy dashers
 
-```{r}
+```{r echo = FALSE}
 # Scatter plot of delivery time by total busy dashers
 delivery_clean %>%
   ggplot(aes(x = total_busy_dashers, y = delivery_time)) +
@@ -235,7 +281,7 @@ delivery_clean %>%
 
 ### 2.IV.D. Scatter plot of delivery time by total outstanding orders
 
-```{r}
+```{r echo = FALSE}
 # Scatter plot of delivery time by total outstanding orders
 delivery_clean %>%
   ggplot(aes(x = total_outstanding_orders, y = delivery_time)) +
@@ -246,7 +292,7 @@ delivery_clean %>%
 
 ### 2.IV.E. Scatter plot of delivery time by estimated order place duration
 
-```{r}
+```{r echo = FALSE}
 # Scatter plot of delivery time by estimated order place duration
 delivery_clean %>%
   ggplot(aes(x = estimated_order_place_duration, y = delivery_time)) +
@@ -255,22 +301,34 @@ delivery_clean %>%
   ylim(0, 1000)
 ```
 
-### 2.IV.F. Box plots of delivery time by market ID
+### 2.IV.F. Scatter plot of delivery time by estimated store to consumer driving duration
 
-```{r}
+```{r echo = FALSE}
+# Scatter plot of delivery time by estimated store to consumer driving duration
+delivery_clean %>%
+  ggplot(aes(x = estimated_store_to_consumer_driving_duration, 
+             y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.G. Box plots of delivery time by market ID
+
+```{r echo = FALSE}
 # Box plots of delivery time by market ID
 delivery_clean %>%
   ggplot(aes(x = market_id, y = delivery_time)) +
   geom_boxplot() +
-  ylim(0, 100)
+  ylim(0, 500)
 ```
 
-### 2.IV.G. Box plots of delivery time by meal time
+### 2.IV.H. Box plots of delivery time by meal time
 
-```{r}
+```{r echo = FALSE}
 # Box plots of delivery time by meal time
 delivery_clean %>%
   ggplot(aes(x = meal_time, y = delivery_time)) +
   geom_boxplot() +
-  ylim(0, 100)
+  ylim(0, 500)
 ```
