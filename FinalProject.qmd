@@ -83,11 +83,13 @@ The DoorDash ETA Prediction dataset contains the following features:
 
 I used the following steps to clean the data and engineer needed features for my analysis:
 
--   I will not be using any of the store features from the dataset for my analysis, so I will omit those columns from the data
+-   I will not be using any of the store features from the dataset for my analysis, as it seems that they are incomplete and not in line with each other (i.e., each `store_id` does not have a distinct `store_primary_category`), so I omitted those columns from the data
 
 -   I omitted incomplete entries
 
--   I created my independent variable, `total_time`, for the analysis, which stores the time from `created_at` to `actual_delivery_time` in minutes
+-   Since `market_id` is a discrete variable, I converted it to datatype factor
+
+-   I created my dependent variable, `total_time`, for the analysis, which stores the time from `created_at` to `actual_delivery_time` in minutes
 
 -   To match the units of `delivery_time`, I converted the DoorDash estimate features from seconds to minutes
 
@@ -95,7 +97,7 @@ I used the following steps to clean the data and engineer needed features for my
 
 -   For ease of interpretability, I converted the order features from cents to dollars
 
--   There appears to be a few different high and low periods during the day that correspond to common meal times (i.e., breakfast, lunch, dinner, late-night) and the times between meal times, respectively (*see Appendix 2a)*. I created a factor `meal_time` to capture this, defined by:
+-   There appears to be a few different high and low periods during the day that correspond to common meal times (i.e., breakfast, lunch, dinner, late-night) and the times between meal times, respectively (*see Appendix 2.III.A.)*. I created a factor `meal_time` to capture this, defined by:
 
     -   `breakfast`: `created_at` between 06:00 and 10:00
 
@@ -113,6 +115,10 @@ delivery_clean <- delivery %>%
 # Omit incomplete entries
 delivery_clean <- delivery_clean %>%
   na.omit()
+
+# Convert market_id to factor
+delivery_clean$market_id <- delivery_clean$market_id %>%
+  as.factor()
 
 # Create total_time variable
 delivery_clean$delivery_time <- delivery_clean$actual_delivery_time %>%
@@ -162,25 +168,109 @@ delivery_clean <- delivery_clean %>%
 
 Upon investigating the data, I found the following correlations between delivery time and the features that I will use in my full model:
 
--   
+-   There appears to be a non-linear relationship between `total_items` and `delivery_time`, so I will include a quadratic term for `total_items` (*See Appendix 2.IV.A.*)
 
-```{r}
-delivery_clean %>%
-  ggplot(aes(x = total_items, y = delivery_time)) +
-  geom_point() +
-  xlim(0, 100) +
-  ylim(0, 1000)
-```
+-   There appears to be a slight linear relationship between `subtotal` and `delivery_time` (*See Appendix 2.IV.B.*)
+
+-   There appears to be a slight linear relationship between `total_busy_dashers` and `delivery_time` (*See Appendix 2.IV.C.*)
+
+-   There appears to be a slight linear relationship between `total_outstanding_orders` and `delivery_time` (*See Appendix 2.IV.D.*)
+
+-   There appears to be a slight linear relationship between `estimated_order_place_duration` and `delivery_time` (*See Appendix 2.IV.E.*)
+
+-   There appears to be a slight difference in `delivery_time` between the different `market_id`s (*See Appendix 2.IV.F.*)
+
+-   There appears to be a slight difference in `delivery_time` between the `meal_time`s (*See Appendix 2.IV.G.*)
+
+## Model Building
+
+### Full Model
 
 ## Appendix
 
-### 2a. Box plot of delivery time by hour of day
+### 2.III.A. Box plot of delivery time by hour of day
 
 ```{r echo = FALSE}
-# Box plots for delivery time by hour of day
+# Box plots of delivery time by hour of day
 delivery_clean %>%
   mutate(hour = as.factor(hour(created_at))) %>%
   ggplot(aes(x = hour, y = delivery_time)) +
     geom_boxplot() +
     ylim(0, 100)
+```
+
+### 2.IV.A. Scatter plot of delivery time by total items
+
+```{r}
+# Scatter plot of delivery time by total
+delivery_clean %>%
+  ggplot(aes(x = total_items, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ poly(x, 2), se = FALSE) +
+  xlim(0, 100) +
+  ylim(0, 500)
+```
+
+### 2.IV.B. Scatter plot of delivery time by subtotal
+
+```{r}
+# Scatter plot of delivery time by subtotal
+delivery_clean %>%
+  ggplot(aes(x = subtotal, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x, se = FALSE) +
+  ylim(0, 500)
+```
+
+### 2.IV.C. Scatter plot of delivery time by total busy dashers
+
+```{r}
+# Scatter plot of delivery time by total busy dashers
+delivery_clean %>%
+  ggplot(aes(x = total_busy_dashers, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.D. Scatter plot of delivery time by total outstanding orders
+
+```{r}
+# Scatter plot of delivery time by total outstanding orders
+delivery_clean %>%
+  ggplot(aes(x = total_outstanding_orders, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.E. Scatter plot of delivery time by estimated order place duration
+
+```{r}
+# Scatter plot of delivery time by estimated order place duration
+delivery_clean %>%
+  ggplot(aes(x = estimated_order_place_duration, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.F. Box plots of delivery time by market ID
+
+```{r}
+# Box plots of delivery time by market ID
+delivery_clean %>%
+  ggplot(aes(x = market_id, y = delivery_time)) +
+  geom_boxplot() +
+  ylim(0, 100)
+```
+
+### 2.IV.G. Box plots of delivery time by meal time
+
+```{r}
+# Box plots of delivery time by meal time
+delivery_clean %>%
+  ggplot(aes(x = meal_time, y = delivery_time)) +
+  geom_boxplot() +
+  ylim(0, 100)
 ```
