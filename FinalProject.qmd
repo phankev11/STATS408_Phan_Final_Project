@@ -171,62 +171,64 @@ delivery_clean <- delivery_clean %>%
 
 Upon investigating the data, I found the following correlations between delivery time and the features that I will use in my full model:
 
--   There appears to be a non-linear relationship between `total_items` and `delivery_time`, so I will include a quadratic term for `total_items` (*See Appendix 2.IV.A.*)
+-   There appears to be a slight linear relationship between `total_items` and `delivery_time` (*See Appendix 2.IV.A.*)
 
 -   There appears to be a slight linear relationship between `max_item_price` and `delivery_time` (*See Appendix 2.IV.B.*)
 
--   There appears to be a slight linear relationship between `total_busy_dashers` and `delivery_time` (*See Appendix 2.IV.C.*)
+-   There appears to be a slight linear relationship between `total_outstanding_orders` and `delivery_time` (*See Appendix 2.IV.C.*)
 
--   There appears to be a slight linear relationship between `total_outstanding_orders` and `delivery_time` (*See Appendix 2.IV.D.*)
-
--   There appears to be a slight linear relationship between `estimated_order_place_duration` and `delivery_time` (*See Appendix 2.IV.E.*)
+-   There appears to be a slight linear relationship between `estimated_order_place_duration` and `delivery_time` (*See Appendix 2.IV.D.*)
 
 -   There appears to be a slight linear relationship between `estimated_store_to_consumer_driving_duration` and `delivery_time` (*See Appendix 2.IV.E.*)
 
--   There appears to be a slight difference in `delivery_time` between the different `market_id`s, although the distribution of `delivery_time`s appears similar between the different `market_id`s (*See Appendix 2.IV.G.*)
+-   There appears to be a slight difference in `delivery_time` between the different `market_id`s, although the distribution of `delivery_time`s appears similar between the different `market_id`s (*See Appendix 2.IV.F.*)
 
--   There appears to be a slight difference in `delivery_time` between the different `meal_time`s, and the distribution of `delivery_time`s appears to differ between the different `meal_time`s (*See Appendix 2.IV.H.*)
+-   There appears to be a slight difference in `delivery_time` between the different `meal_time`s, and the distribution of `delivery_time`s appears to differ between the different `meal_time`s (*See Appendix 2.IV.G.*)
 
 ## 3. Model Building
 
 ### I. Full Model
 
-I will start with a full model that includes all of the features I believe may have some sort of effect on delivery time based on the results from the data exploration. That full model to predict delivery time includes the following variables:
-
--   `total_items` and a quadratic term: intuitively, a larger order should take longer to prepare, thus increasing delivery time
-
--   `max_item_price`: intuitively, a more expensive restaurant might care more about their preparation, thus taking longer to prepare and increasing delivery time
-
--   `total_busy_dashers`: intuitively, if more DoorDash drivers are currently working on a different order, then it should take longer for DoorDash to find an available driver, thus increasing delivery time
-
--   `total_outstanding_orders`: intuitively, if there are more outstanding orders at the moment, then it should take longer to prepare the order, thus increasing delivery time
-
--   `estimated_store_to_consumer_driving_duration`: intuitively, if it takes longer to get from the restaurant to the customer, delivery time should be longer
-
--   `market_id`: intuitively, each city has a slightly different average delivery time
-
--   `meal_time` and an interaction between `meal_time` and the above variables: intuitively, each meal time has a slightly different average delivery time, and the effect on delivery time from from the rest of the features may differ between meal times
-
-To avoid issues with multicollinearity, the following features were left out of the full model:
-
--   `created_at` and `actual_delivery_time`, which created the features `delivery_time` and `meal_time`
-
--   `subtotal` and `min_item_price`, which is linearly related to `total_items` and `max_item_price`
-
--   `total_onshift_dashers`, which `total_busy_dashers` is a subset of
+I will start a full model that regresses delivery time on all of the variables in the dataset. Before I complete any transformations on the response variable or the data, I will remove all of the features from the full model that have evidence of multicollinearity based on their GVIF values (*See Appendix 3.I.A.*). This gives us the following model:
 
 ```{r}
-# Create full model
-mod_full <- lm(delivery_time ~ total_items + I(total_items^2) + max_item_price +
-                               total_busy_dashers + total_outstanding_orders +
-                               estimated_store_to_consumer_driving_duration +
-                               market_id + meal_time + total_items * meal_time +
-                               I(total_items^2) * meal_time + max_item_price *
-                               meal_time + total_busy_dashers * meal_time +
-                               total_outstanding_orders * meal_time +
-                               estimated_store_to_consumer_driving_duration *
-                               meal_time + market_id * meal_time,
+# Create full model without multicollinear terms
+mod_full <- lm(delivery_time ~ . - actual_delivery_time
+                                 - total_onshift_dashers
+                                 - total_busy_dashers,
                data = delivery_clean)
+
+VIF(mod_full)
+```
+
+Furthermore, even though there is no longer any statistically significant evidence of multicollinearity based on the GVIF values for each of the features, I will remove `created_at`, `subtotal`, `num_distinct_items`, and `min_item_price`. Intuitively,
+
+-   `created_at` is a time variable and was used to calculate the feature `meal_time`
+
+-   `subtotal` is related to `total_items`, `min_item_price`, and `max_item_price`
+
+-   `num_distinct_items` is a subset of `total_items`
+
+-   `min_item_price` is related to `max_item_price`
+
+Finally, I will add in an interaction term between `meal_time` and all the other features, as intuitively, the effect on delivery time all of the other features have may differ on the time of the day. This gives me the following maximum model:
+
+```{r}
+mod_max <- lm(delivery_time ~ . - actual_delivery_time
+                                - total_onshift_dashers
+                                - total_busy_dashers
+                                - created_at
+                                - subtotal
+                                - num_distinct_items
+                                - min_item_price
+                                + market_id * meal_time
+                                + total_items * meal_time
+                                + max_item_price * meal_time
+                                + total_outstanding_orders * meal_time
+                                + estimated_order_place_duration * meal_time
+                                + estimated_store_to_consumer_driving_duration 
+                                * meal_time,
+              data = delivery_clean)
 ```
 
 #### A. Hypothesis Testing
@@ -239,12 +241,12 @@ $$
 
 and our full model can be written out as:
 
-$$ \hat{delivery\_time} = \beta_0 + \beta_1X_1 + \cdots + \beta_{46}X_{46} $$
+$$ \hat{delivery\_time} = \beta_0 + \beta_1X_1 + \cdots + \beta_{44}X_{44} $$
 
 Thus, we get the following hypotheses:
 
 $$
-H_0: \beta_j = 0 \text{, }1 \leq j \leq 46
+H_0: \beta_j = 0 \text{, }1 \leq j \leq 44
 $$
 
 $$
@@ -255,11 +257,11 @@ Looking at our $F$-statistic and $p$-value from the model, we can reject the nul
 
 ```{r}
 # Pull F-statistic from model summary
-summary(mod_full)$fstatistic[[1]]
+summary(mod_max)$fstatistic[[1]]
 # Pull p-value from model summary
-pf(summary(mod_full)$fstatistic[1],
-   summary(mod_full)$fstatistic[2],
-   summary(mod_full)$fstatistic[3],
+pf(summary(mod_max)$fstatistic[1],
+   summary(mod_max)$fstatistic[2],
+   summary(mod_max)$fstatistic[3],
    lower.tail = FALSE)
 ```
 
@@ -269,9 +271,12 @@ Based on the $F$-statistics and $p$-values given from the Bruesch-Pagan (B-P) an
 
 ```{r}
 # Breusch-Pagan test to check homoscedasticity
-bptest(mod_full)
+bptest(mod_max)
+```
+
+```{r}
 # Kolmogorov-Smirnov test to check normality
-ks.test(residuals(mod_full), 'pnorm', sd = summary(mod_full)$s)
+ks.test(residuals(mod_max), 'pnorm', sd = summary(mod_max)$s)
 ```
 
 ### II. Log-transformation of Delivery Time
@@ -280,17 +285,20 @@ Performing a log-transformation on delivery time produces the following model:
 
 ```{r}
 # Create log-transformed model
-mod_log <- lm(log(delivery_time) ~ total_items + I(total_items^2) + 
-                                   max_item_price + total_busy_dashers +
-                                   total_outstanding_orders +
-                                   estimated_store_to_consumer_driving_duration +
-                                   market_id + meal_time + total_items *
-                                   meal_time + I(total_items^2) * meal_time +
-                                   max_item_price * meal_time +
-                                   total_busy_dashers * meal_time +
-                                   total_outstanding_orders * meal_time +
-                                   estimated_store_to_consumer_driving_duration *
-                                   meal_time + market_id * meal_time,
+mod_log <- lm(log(delivery_time) ~ . - actual_delivery_time
+                                     - total_onshift_dashers
+                                     - total_busy_dashers
+                                     - created_at
+                                     - subtotal
+                                     - num_distinct_items
+                                     - min_item_price
+                                     + market_id * meal_time
+                                     + total_items * meal_time
+                                     + max_item_price * meal_time
+                                     + total_outstanding_orders * meal_time
+                                     + estimated_order_place_duration * meal_time
+                                     + estimated_store_to_consumer_driving_duration
+                                     * meal_time,
               data = delivery_clean)
 ```
 
@@ -322,21 +330,44 @@ summary(mod_log)$adj.r.squared
 
 First, I will complete a sequential replacement procedure to maximize the adjusted-$R^2$ of my model. Given that my rationale to keep the log-transformed full model was based on more of the variance being able to be explained with the log-transformation of the response variable, I felt that staying consistent in my reasoning would be best for this project (*See Appendix 3.III.A.i.*)
 
-We find that removing the interaction term between `total_items` and `meal_time` maximizes the adjusted-$R^2$:
+We find that removing the interaction term between `market_id` and `meal_time` maximizes the adjusted-$R^2$:
 
 ```{r}
+# Complete sequential replacement procedure for mod_log
+var_sel <- regsubsets(log(delivery_time) ~ . - actual_delivery_time
+                                     - total_onshift_dashers
+                                     - total_busy_dashers
+                                     - created_at
+                                     - subtotal
+                                     - num_distinct_items
+                                     - min_item_price
+                                     + market_id * meal_time
+                                     + total_items * meal_time
+                                     + max_item_price * meal_time
+                                     + total_outstanding_orders * meal_time
+                                     + estimated_order_place_duration * meal_time
+                                     + estimated_store_to_consumer_driving_duration
+                                     * meal_time,
+                      data = delivery_clean,
+                      method = 'seqrep',
+                      nvmax = 50,
+                      really.big = TRUE)
+
 # Create best model
-mod_best <- lm(log(delivery_time) ~ total_items + I(total_items^2) + 
-                                    max_item_price + total_busy_dashers +
-                                    total_outstanding_orders +
-                                    estimated_store_to_consumer_driving_duration +
-                                    market_id + meal_time + I(total_items^2) *
-                                    meal_time + max_item_price * meal_time +
-                                    total_busy_dashers * meal_time +
-                                    total_outstanding_orders * meal_time +
-                                    estimated_store_to_consumer_driving_duration *
-                                    meal_time + market_id * meal_time,
-               data = delivery_clean)
+mod_best <- lm(log(delivery_time) ~ . - actual_delivery_time
+                                     - total_onshift_dashers
+                                     - total_busy_dashers
+                                     - created_at
+                                     - subtotal
+                                     - num_distinct_items
+                                     - min_item_price
+                                     + total_items * meal_time
+                                     + max_item_price * meal_time
+                                     + total_outstanding_orders * meal_time
+                                     + estimated_order_place_duration * meal_time
+                                     + estimated_store_to_consumer_driving_duration
+                                     * meal_time,
+              data = delivery_clean)
 ```
 
 ```{r}
@@ -355,11 +386,77 @@ bptest(mod_best)
 ks.test(residuals(mod_best), 'pnorm', sd = summary(mod_log)$s)
 ```
 
-#### B. Testing For Multicollinearity
+## 4. Interpretation of Results
 
-```{r}
-VIF(mod_best)
-```
+The resulting linear regression line that I find to model delivery time is (*see Appendix 4.I*):
+
+$$
+\hat{\text{delivery_time}} = 3.521 - 0.1960(\text{market_id}_2) - 0.05494(\text{market_id}_3) - 0.1687(\text{market_id}_4)
+$$
+
+$$
+- \text{ }0.08057(\text{market_id}_5) - 0.1175(\text{market_id}_6) + 0.01008(\text{total_items}) + 0.0009715(\text{max_item_price})
+$$
+
+$$
+- \text{ } 0.001467(\text{total_outstanding_orders}) + 0.01345(\text{estimated_order_place_duration})
+$$
+
+$$
++ 0.02765(\text{estimated_store_to_consumer_duration}) - 0.1992(\text{meal_time}_{\text{dinner}})
+$$
+
+$$
+- \text{ } 0.3887(\text{meal_time}_{\text{late_night}}) - 0.2757(\text{meal_time}_{\text{lunch}}) + 0.004941(\text{total_items} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
+- \text{ } 0.0004345(\text{total_items} \times \text{meal_time}_{\text{late_night}}) + 0.01080(\text{total_items} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
++ \text{ } 0.005393(\text{max_item_price} \times \text{meal_time}_{\text{dinner}}) + 0.005661(\text{max_item_price} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.005413(\text{max_item_price} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
++ \text{ } 0.003356(\text{total_outstanding_orders} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
++ \text{ } 0.005010(\text{total_outstanding_orders} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.003883(\text{total_outstanding_orders} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
++ \text{ } 0.01503(\text{estimated_place_duration} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
++ \text{ } 0.01947(\text{estimated_place_duration} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.005897(\text{estimated_place_duration} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
+- \text{ } 0.001710(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
++ \text{ } 0.001068(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.002102(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{lunch}})
+$$
 
 ## Appendix
 
@@ -381,7 +478,7 @@ delivery_clean %>%
 delivery_clean %>%
   ggplot(aes(x = total_items, y = delivery_time)) +
   geom_point() +
-  geom_smooth(formula = y ~ poly(x, 2), se = FALSE) +
+  geom_smooth(formula = y ~ x, se = FALSE) +
   xlim(0, 100) +
   ylim(0, 500)
 ```
@@ -397,18 +494,7 @@ delivery_clean %>%
   ylim(0, 500)
 ```
 
-### 2.IV.C. Scatter plot of delivery time by total busy dashers
-
-```{r echo = FALSE}
-# Scatter plot of delivery time by total busy dashers
-delivery_clean %>%
-  ggplot(aes(x = total_busy_dashers, y = delivery_time)) +
-  geom_point() +
-  geom_smooth(formula = y ~ x) +
-  ylim(0, 1000)
-```
-
-### 2.IV.D. Scatter plot of delivery time by total outstanding orders
+### 2.IV.C. Scatter plot of delivery time by total outstanding orders
 
 ```{r echo = FALSE}
 # Scatter plot of delivery time by total outstanding orders
@@ -419,7 +505,7 @@ delivery_clean %>%
   ylim(0, 1000)
 ```
 
-### 2.IV.E. Scatter plot of delivery time by estimated order place duration
+### 2.IV.D. Scatter plot of delivery time by estimated order place duration
 
 ```{r echo = FALSE}
 # Scatter plot of delivery time by estimated order place duration
@@ -430,7 +516,7 @@ delivery_clean %>%
   ylim(0, 1000)
 ```
 
-### 2.IV.F. Scatter plot of delivery time by estimated store to consumer driving duration
+### 2.IV.E. Scatter plot of delivery time by estimated store to consumer driving duration
 
 ```{r echo = FALSE}
 # Scatter plot of delivery time by estimated store to consumer driving duration
@@ -442,7 +528,7 @@ delivery_clean %>%
   ylim(0, 1000)
 ```
 
-### 2.IV.G. Box plots of delivery time by market ID
+### 2.IV.F. Box plots of delivery time by market ID
 
 ```{r echo = FALSE}
 # Box plots of delivery time by market ID
@@ -452,7 +538,7 @@ delivery_clean %>%
   ylim(0, 500)
 ```
 
-### 2.IV.H. Box plots of delivery time by meal time
+### 2.IV.G. Box plots of delivery time by meal time
 
 ```{r echo = FALSE}
 # Box plots of delivery time by meal time
@@ -460,6 +546,41 @@ delivery_clean %>%
   ggplot(aes(x = meal_time, y = delivery_time)) +
   geom_boxplot() +
   ylim(0, 500)
+```
+
+### 3.I.A. Addressing multicollinearity in the full model
+
+```{r}
+# Starting with full model
+mod_full_1 <- lm(delivery_time ~ .,
+                 data = delivery_clean)
+
+VIF(mod_full_1)
+```
+
+```{r}
+# Removing actual delivery time from full model
+mod_full_2 <- lm(delivery_time ~ . - actual_delivery_time,
+                 data = delivery_clean)
+
+VIF(mod_full_2)
+```
+
+```{r}
+# Removing total onshift dealers from reduced model
+mod_full_3 <- lm(delivery_time ~ . - actual_delivery_time
+                                   - total_onshift_dashers,
+                 data = delivery_clean)
+VIF(mod_full_3)
+```
+
+```{r}
+# Removing total busy dealers from reduced model
+mod_full_4 <- lm(delivery_time ~ . - actual_delivery_time
+                                   - total_onshift_dashers
+                                   - total_busy_dashers,
+                 data = delivery_clean)
+VIF(mod_full_4)
 ```
 
 ### 3.I.B.i. Residual plot for full model
@@ -489,23 +610,12 @@ plot(mod_log, 2)
 ### 3.III.A.i. Coefficients for model that maximizes adjusted R-squared
 
 ```{r}
-# Complete sequential replacement procedure for mod_log
-var_sel <- regsubsets(log(delivery_time) ~ total_items + I(total_items^2) + 
-                                   max_item_price + total_busy_dashers +
-                                   total_outstanding_orders +
-                                   estimated_store_to_consumer_driving_duration +
-                                   market_id + meal_time + total_items *
-                                   meal_time + I(total_items^2) * meal_time +
-                                   max_item_price * meal_time +
-                                   total_busy_dashers * meal_time +
-                                   total_outstanding_orders * meal_time +
-                                   estimated_store_to_consumer_driving_duration *
-                                   meal_time + market_id * meal_time,
-                      data = delivery_clean,
-                      method = 'seqrep',
-                      nvmax = 50,
-                      really.big = TRUE)
-
 # Returns coefficients of model that maximizes adjusted R-squared
 coef(var_sel, which.max(summary(var_sel)$adjr2))
+```
+
+### 4.I. Summary of best model
+
+```{r}
+summary(mod_best)
 ```
