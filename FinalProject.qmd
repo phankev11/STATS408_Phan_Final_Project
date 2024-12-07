@@ -16,6 +16,8 @@ execute:
 ```{r}
 # Load required libraries for the project
 library(tidyverse)
+library(lmtest)
+library(regclass)
 ```
 
 ## Introduction
@@ -226,7 +228,77 @@ mod_full <- lm(delivery_time ~ total_items + I(total_items^2) + max_item_price +
                data = delivery_clean)
 ```
 
+#### Hypothesis Testing
+
+Our reduced model can be written out as:
+
+$$
+\hat{delivery\_time} = \beta_0
+$$
+
+and our full model can be written out as:
+
+$$ \hat{delivery\_time} = \beta_0 + \beta_1X_1 + \cdots + \beta_{46}X_{46} $$
+
+Thus, we get the following hypotheses:
+
+$$
+H_0: \beta_j = 0 \text{, }1 \leq j \leq 46
+$$
+
+$$
+H_\alpha: \text{One of } \beta_j \neq 0
+$$
+
+Looking at our $F$-statistic and $p$-value from the model, we can reject the null hypothesis and conclude that at least one of the features is statistically significant in predicting delivery time.
+
+```{r}
+# Pull F-statistic from model summary
+summary(mod_full)$fstatistic[[1]]
+# Pull p-value from model summary
+pf(summary(mod_full)$fstatistic[1],
+   summary(mod_full)$fstatistic[2],
+   summary(mod_full)$fstatistic[3],
+   lower.tail = FALSE)
+```
+
+#### Checking Model Assumptions
+
+Based on the $F$-statistics and $p$-values given from the Bruesch-Pagan and Kolmogorov-Smirnov tests, there is statistically significant evidence to say that the assumptions of homoscedastic and normally distributed residuals are violated in the full model. Looking at the shapes of the residual plot (*See Appendix 3.I.B.i.*) and the QQ-plot (*See Appendix 3.I.B.ii.*) from the full model, I will perform a log-transformation on the response variable to see if I can correct the violations of the assumptions.
+
+```{r}
+# Breusch-Pagan test to check homoscedasticity
+bptest(mod_full)
+# Kolmogorov-Smirnov test to check normality
+ks.test(residuals(mod_full), 'pnorm', sd = summary(mod_full)$s)
+```
+
+### Log-transformation of the Response Variable
+
+```{r}
+mod_log <- lm(log(delivery_time) ~ total_items + I(total_items^2) + 
+                                   max_item_price + total_busy_dashers +
+                                   total_outstanding_orders +
+                                   estimated_store_to_consumer_driving_duration +
+                                   market_id + meal_time + total_items *
+                                   meal_time + I(total_items^2) * meal_time +
+                                   max_item_price * meal_time +
+                                   total_busy_dashers * meal_time +
+                                   total_outstanding_orders * meal_time +
+                                   estimated_store_to_consumer_driving_duration *
+                                   meal_time + market_id * meal_time,
+              data = delivery_clean)
+```
+
 ### Variable Selection
+
+Taking a look at the ANOVA table for our full model, it appears that some features included may not be statistically significant when added to the model to predict delivery time. Thus, I will use some
+
+```{r}
+anova(mod_full)
+```
+
+For my variable selection procedure, I will
 
 ```{r}
 summary(mod_full)
@@ -331,4 +403,16 @@ delivery_clean %>%
   ggplot(aes(x = meal_time, y = delivery_time)) +
   geom_boxplot() +
   ylim(0, 500)
+```
+
+### 3.I.B.i. Residual plot for full model
+
+```{r echo = FALSE}
+plot(mod_full, 1)
+```
+
+### 3.I.B.ii. QQ-plot for full model
+
+```{r echo = FALSE}
+plot(mod_full, 2)
 ```
