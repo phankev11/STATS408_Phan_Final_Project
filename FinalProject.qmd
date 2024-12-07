@@ -1,0 +1,186 @@
+---
+title: "Final Project"
+author: "Kevin Phan"
+format: 
+  html:
+    self-contained: true
+    embed-resources: true
+editor: visual
+execute: 
+  echo: true
+  include: true
+---
+
+[Link to Project Github Repository](https://github.com/phankev11/STATS408_Phan_Final_Project.git)
+
+```{r}
+# Load required libraries for the project
+library(tidyverse)
+```
+
+## Introduction
+
+Immediately after work or after school, the first thing I think about is dinner. However, the worst thing imaginable happens: I open my refridgerator and it's empty. I look outside the window and the weather is poor; the last thing I want to do is leave my apartment now. Luckily, with the rise of technology, a meal can be at my doorstep with a few clicks and swipes on my phone. With mobile applications like DoorDash, GrubHub, UberEats, etc., all I need to do is select which restaurant I would like to eat in tonight, choose which meal I would like to have, input my address and payment information, then almost instantly, I am given a receipt and an estimated time of arrival.
+
+While waiting for dinner, I start to wonder what goes into that estimated time of arrival that I seemed to instantaneously receive after placing my order. If the mobile application I used can quickly predict what time I will receive my dinner, then there must be some prediction model that the application uses to determine that estimated arrival time. Intuitively, one can see that many things may influence delivery time, such as the time of the day the order was places, how busy the drivers on the application are, the size of the order, etc. With that in mind, I will focus my project on investigating which features influence delivery time.
+
+## Data Exploration and Preparation
+
+### Dataset
+
+For my project, I will be using the [DoorDash ETA Prediction](https://www.kaggle.com/datasets/dharun4772/doordash-eta-prediction/data) dataset. The dataset consists of a subset of DoorDash deliveries ($n = 197428$) that occured from mid-January 2015 to mid-February 2015 in the US West Coast. Each row in the dataset corresponds to one unique delivery and contains data relating to time, the store the order was placed at, the order, the conditions of the DoorDash market at the time the order was placed, and DoorDash-provided estimates.
+
+```{r}
+# Load the dataset
+delivery <- read.csv('Data/doordash.csv')
+```
+
+### Dataset Features
+
+The DoorDash ETA Prediction dataset contains the following features:
+
+#### Time features
+
+-   `market_id`: given ID number for each city/region DoorDash operates in
+
+-   `created_at`: time order is submitted to DoorDash; *UTC*
+
+-   `actual_delivery_time`: time order is delivered; *UTC*
+
+#### Store features
+
+-   `store_id`: given ID number for each unique restaurant
+
+-   `store_primary_category`: restaurant's cuisine
+
+-   `order_protocol`: mode DoorDash order is received by restaurant
+
+#### Order features
+
+-   `subtotal`: value of order submitted; *\\\$0.01 USD*
+
+-   `num_distinct_items`: number of items in order
+
+-   `min_item_price`: price of lowest cost item in order; *\\\$0.01 USD*
+
+-   `max_item_price`: price of highest cost item in order; *\\\$0.01 USD*
+
+#### Market features
+
+-   `total_onshift_dashers`: number of available dashes within 10 miles or store at time of order submission
+
+-   `total_busy_dashers`: subset of `total_onshift_dashers` already working on different order at time of order submission
+
+-   `total_outstanding_orders`: number of orders within 10 miles being processed at time time of order submission
+
+#### DoorDash estimate
+
+-   `estimated_order_place_duration`: estimated time for restaurant to receive order from DoorDash; *seconds*
+
+-   `estimated_store_to_consumer_driving_duration`: estimated travel time between store and customer; *seconds*
+
+### Data Cleaning and Feature Engineering
+
+I used the following steps to clean the data and engineer needed features for my analysis:
+
+-   I will not be using any of the store features from the dataset for my analysis, so I will omit those columns from the data
+
+-   I omitted incomplete entries
+
+-   I created my independent variable, `total_time`, for the analysis, which stores the time from `created_at` to `actual_delivery_time` in minutes
+
+-   To match the units of `delivery_time`, I converted the DoorDash estimate features from seconds to minutes
+
+-   Given that all of the deliveries occurred in the US West Coast, I converted `created_at` and `actual_delivery_time` from UTC to US/Pacific Time
+
+-   For ease of interpretability, I converted the order features from cents to dollars
+
+-   There appears to be a few different high and low periods during the day that correspond to common meal times (i.e., breakfast, lunch, dinner, late-night) and the times between meal times, respectively (*see Appendix 2a)*. I created a factor `meal_time` to capture this, defined by:
+
+    -   `breakfast`: `created_at` between 06:00 and 10:00
+
+    -   `lunch`: `created_at` between 10:00 and 16:00
+
+    -   `dinner`: `created_at` between 16:00 and 21:00
+
+    -   `late_night`: `created_at` between 21:00 and 01:00
+
+```{r}
+# Create new clean data table without store features
+delivery_clean <- delivery %>%
+  select(-c(store_id, store_primary_category, order_protocol))
+
+# Omit incomplete entries
+delivery_clean <- delivery_clean %>%
+  na.omit()
+
+# Create total_time variable
+delivery_clean$delivery_time <- delivery_clean$actual_delivery_time %>%
+  difftime(delivery_clean$created_at) %>%
+  as.numeric()
+
+# Convert DoorDash estimate features from sec to min
+delivery_clean$estimated_order_place_duration <-
+  delivery_clean$estimated_order_place_duration / 60
+
+delivery_clean$estimated_store_to_consumer_driving_duration  <-
+  delivery_clean$estimated_store_to_consumer_driving_duration  / 60
+
+# Set datetime variables to UTC, then convert to PST
+delivery_clean$created_at <- delivery_clean$created_at %>%
+  ymd_hms(tz = 'UTC')
+
+delivery_clean$created_at <- delivery_clean$created_at %>%
+  with_tz(tzone = 'US/Pacific')
+
+delivery_clean$actual_delivery_time <- delivery_clean$actual_delivery_time %>%
+  ymd_hms(tz = 'UTC')
+
+delivery_clean$actual_delivery_time <- delivery_clean$actual_delivery_time %>%
+  with_tz(tzone = 'US/Pacific')
+
+# Convert order features from cents to dollars
+delivery_clean$subtotal <- delivery_clean$subtotal / 100
+
+delivery_clean$min_item_price <- delivery_clean$min_item_price / 100
+
+delivery_clean$max_item_price <- delivery_clean$max_item_price / 100
+
+# Create meal_time variable
+delivery_clean <- delivery_clean %>%
+  mutate(meal_time = case_when(
+                       between(hour(created_at), 0, 1) ~ 'late_night',
+                       between(hour(created_at), 6, 9) ~ 'breakfast',
+                       between(hour(created_at), 10, 15) ~ 'lunch',
+                       between(hour(created_at), 16, 20) ~ 'dinner',
+                       between(hour(created_at), 21, 24) ~ 'late_night'
+                     )
+        )
+```
+
+### Data Exploration
+
+Upon investigating the data, I found the following correlations between delivery time and the features that I will use in my full model:
+
+-   
+
+```{r}
+delivery_clean %>%
+  ggplot(aes(x = total_items, y = delivery_time)) +
+  geom_point() +
+  xlim(0, 100) +
+  ylim(0, 1000)
+```
+
+## Appendix
+
+### 2a. Box plot of delivery time by hour of day
+
+```{r echo = FALSE}
+# Box plots for delivery time by hour of day
+delivery_clean %>%
+  mutate(hour = as.factor(hour(created_at))) %>%
+  ggplot(aes(x = hour, y = delivery_time)) +
+    geom_boxplot() +
+    ylim(0, 100)
+```
