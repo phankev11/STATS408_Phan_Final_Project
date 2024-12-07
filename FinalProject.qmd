@@ -17,18 +17,19 @@ execute:
 # Load required libraries for the project
 library(tidyverse)
 library(lmtest)
+library(leaps)
 library(regclass)
 ```
 
-## Introduction
+## 1. Introduction
 
 Immediately after work or after school, the first thing I think about is dinner. However, the worst thing imaginable happens: I open my refridgerator and it's empty. I look outside the window and the weather is poor; the last thing I want to do is leave my apartment now. Luckily, with the rise of technology, a meal can be at my doorstep with a few clicks and swipes on my phone. With mobile applications like DoorDash, GrubHub, UberEats, etc., all I need to do is select which restaurant I would like to eat in tonight, choose which meal I would like to have, input my address and payment information, then almost instantly, I am given a receipt and an estimated time of arrival.
 
 While waiting for dinner, I start to wonder what goes into that estimated time of arrival that I seemed to instantaneously receive after placing my order. If the mobile application I used can quickly predict what time I will receive my dinner, then there must be some prediction model that the application uses to determine that estimated arrival time. Intuitively, one can see that many things may influence delivery time, such as the time of the day the order was places, how busy the drivers on the application are, the size of the order, etc. With that in mind, I will focus my project on investigating which features influence delivery time.
 
-## Data Exploration and Preparation
+## 2. Data Exploration and Preparation
 
-### Dataset
+### I. Dataset
 
 For my project, I will be using the [DoorDash ETA Prediction](https://www.kaggle.com/datasets/dharun4772/doordash-eta-prediction/data) dataset. The dataset consists of a subset of DoorDash deliveries ($n = 197428$) that occured from mid-January 2015 to mid-February 2015 in the US West Coast. Each row in the dataset corresponds to one unique delivery and contains data relating to time, the store the order was placed at, the order, the conditions of the DoorDash market at the time the order was placed, and DoorDash-provided estimates.
 
@@ -37,11 +38,11 @@ For my project, I will be using the [DoorDash ETA Prediction](https://www.kaggle
 delivery <- read.csv('Data/doordash.csv')
 ```
 
-### Dataset Features
+### II. Dataset Features
 
 The DoorDash ETA Prediction dataset contains the following features:
 
-#### Time features
+#### A. Time features
 
 -   `market_id`: given ID number for each city/region DoorDash operates in
 
@@ -49,7 +50,7 @@ The DoorDash ETA Prediction dataset contains the following features:
 
 -   `actual_delivery_time`: time order is delivered; *UTC*
 
-#### Store features
+#### B. Store features
 
 -   `store_id`: given ID number for each unique restaurant
 
@@ -57,7 +58,7 @@ The DoorDash ETA Prediction dataset contains the following features:
 
 -   `order_protocol`: mode DoorDash order is received by restaurant
 
-#### Order features
+#### C. Order features
 
 -   `subtotal`: value of order submitted; *\\\$0.01 USD*
 
@@ -67,7 +68,7 @@ The DoorDash ETA Prediction dataset contains the following features:
 
 -   `max_item_price`: price of highest cost item in order; *\\\$0.01 USD*
 
-#### Market features
+#### D. Market features
 
 -   `total_onshift_dashers`: number of available dashes within 10 miles or store at time of order submission
 
@@ -75,13 +76,13 @@ The DoorDash ETA Prediction dataset contains the following features:
 
 -   `total_outstanding_orders`: number of orders within 10 miles being processed at time time of order submission
 
-#### DoorDash estimate
+#### E. DoorDash estimate
 
 -   `estimated_order_place_duration`: estimated time for restaurant to receive order from DoorDash; *seconds*
 
 -   `estimated_store_to_consumer_driving_duration`: estimated travel time between store and customer; *seconds*
 
-### Data Cleaning and Feature Engineering
+### III. Data Cleaning and Feature Engineering
 
 I used the following steps to clean the data and engineer needed features for my analysis:
 
@@ -166,7 +167,7 @@ delivery_clean <- delivery_clean %>%
         )
 ```
 
-### Data Exploration
+### IV. Data Exploration
 
 Upon investigating the data, I found the following correlations between delivery time and the features that I will use in my full model:
 
@@ -186,9 +187,9 @@ Upon investigating the data, I found the following correlations between delivery
 
 -   There appears to be a slight difference in `delivery_time` between the different `meal_time`s, and the distribution of `delivery_time`s appears to differ between the different `meal_time`s (*See Appendix 2.IV.H.*)
 
-## Model Building
+## 3. Model Building
 
-### Full Model
+### I. Full Model
 
 I will start with a full model that includes all of the features I believe may have some sort of effect on delivery time based on the results from the data exploration. That full model to predict delivery time includes the following variables:
 
@@ -215,7 +216,7 @@ To avoid issues with multicollinearity, the following features were left out of 
 -   `total_onshift_dashers`, which `total_busy_dashers` is a subset of
 
 ```{r}
-# Create my full model
+# Create full model
 mod_full <- lm(delivery_time ~ total_items + I(total_items^2) + max_item_price +
                                total_busy_dashers + total_outstanding_orders +
                                estimated_store_to_consumer_driving_duration +
@@ -228,7 +229,7 @@ mod_full <- lm(delivery_time ~ total_items + I(total_items^2) + max_item_price +
                data = delivery_clean)
 ```
 
-#### Hypothesis Testing
+#### A. Hypothesis Testing
 
 Our reduced model can be written out as:
 
@@ -262,9 +263,9 @@ pf(summary(mod_full)$fstatistic[1],
    lower.tail = FALSE)
 ```
 
-#### Checking Model Assumptions
+#### B. Checking Model Assumptions
 
-Based on the $F$-statistics and $p$-values given from the Bruesch-Pagan and Kolmogorov-Smirnov tests, there is statistically significant evidence to say that the assumptions of homoscedastic and normally distributed residuals are violated in the full model. Looking at the shapes of the residual plot (*See Appendix 3.I.B.i.*) and the QQ-plot (*See Appendix 3.I.B.ii.*) from the full model, I will perform a log-transformation on the response variable to see if I can correct the violations of the assumptions.
+Based on the $F$-statistics and $p$-values given from the Bruesch-Pagan (B-P) and Kolmogorov-Smirnov (K-S) tests, there is statistically significant evidence to say that the assumptions of homoscedastic and normally distributed residuals are violated in the full model. Looking at the shapes of the residual plot (*See Appendix 3.I.B.i.*) and the QQ-plot (*See Appendix 3.I.B.ii.*) from the full model, I will perform a log-transformation on the response variable to see if I can correct the violations of the assumptions.
 
 ```{r}
 # Breusch-Pagan test to check homoscedasticity
@@ -273,9 +274,12 @@ bptest(mod_full)
 ks.test(residuals(mod_full), 'pnorm', sd = summary(mod_full)$s)
 ```
 
-### Log-transformation of the Response Variable
+### II. Log-transformation of Delivery Time
+
+Performing a log-transformation on delivery time produces the following model:
 
 ```{r}
+# Create log-transformed model
 mod_log <- lm(log(delivery_time) ~ total_items + I(total_items^2) + 
                                    max_item_price + total_busy_dashers +
                                    total_outstanding_orders +
@@ -290,18 +294,71 @@ mod_log <- lm(log(delivery_time) ~ total_items + I(total_items^2) +
               data = delivery_clean)
 ```
 
-### Variable Selection
+#### A. Model Assumptions
 
-Taking a look at the ANOVA table for our full model, it appears that some features included may not be statistically significant when added to the model to predict delivery time. Thus, I will use some
+While, upon visual inspection, the shape of the residual plot (*See Appendix 3.II.A.i.*) and the QQ-plot (*See Appendix 3.II.A.ii.*) appear to fix our violated assumptions from the untransformed model, the $F$-statistics and $p$-values given from the B-P and K-S tests give us statistically significant evidence to conclude that the assumptions of homoscedastic and normally distributed residuals are still violated.
 
 ```{r}
-anova(mod_full)
+# Breusch-Pagan test to check homoscedasticity
+bptest(mod_log)
+# Kolmogorov-Smirnov test to check normality
+ks.test(residuals(mod_log), 'pnorm', sd = summary(mod_log)$s)
 ```
 
-For my variable selection procedure, I will
+#### B. Checking for better fit
+
+Based on the adjusted-$R^2$ values from the full model and the log-transformed model, the log-transformed model explains more of the variance in delivery time than the untransformed model. Therefore, as I move forward with completing variable selection procedures to fix the violation of the assumptions of the model, I will keep the log-transformation.
 
 ```{r}
-summary(mod_full)
+# Pull r-squared from full model
+summary(mod_full)$adj.r.squared
+# Pull r-squared from log-transformed model
+summary(mod_log)$adj.r.squared
+```
+
+### III. Variable Selection
+
+#### A. Sequential Replacement to Minimize Adjusted R-squared
+
+First, I will complete a sequential replacement procedure to maximize the adjusted-$R^2$ of my model. Given that my rationale to keep the log-transformed full model was based on more of the variance being able to be explained with the log-transformation of the response variable, I felt that staying consistent in my reasoning would be best for this project (*See Appendix 3.III.A.i.*)
+
+We find that removing the interaction term between `total_items` and `meal_time` maximizes the adjusted-$R^2$:
+
+```{r}
+# Create best model
+mod_best <- lm(log(delivery_time) ~ total_items + I(total_items^2) + 
+                                    max_item_price + total_busy_dashers +
+                                    total_outstanding_orders +
+                                    estimated_store_to_consumer_driving_duration +
+                                    market_id + meal_time + I(total_items^2) *
+                                    meal_time + max_item_price * meal_time +
+                                    total_busy_dashers * meal_time +
+                                    total_outstanding_orders * meal_time +
+                                    estimated_store_to_consumer_driving_duration *
+                                    meal_time + market_id * meal_time,
+               data = delivery_clean)
+```
+
+```{r}
+# Pull r-squared from full model
+summary(mod_log)$adj.r.squared
+# Pull r-squared from log-transformed model
+summary(var_sel)$adjr2[which.max(summary(var_sel)$adjr2)]
+```
+
+Even ater variable selection, the $F$-statistics and $p$-values given from the B-P and K-S tests give us statistically significant evidence to conclude that the assumptions of homoscedastic and normally distributed residuals are still violated.
+
+```{r}
+# Breusch-Pagan test to check homoscedasticity
+bptest(mod_best)
+# Kolmogorov-Smirnov test to check normality
+ks.test(residuals(mod_best), 'pnorm', sd = summary(mod_log)$s)
+```
+
+#### B. Testing For Multicollinearity
+
+```{r}
+VIF(mod_best)
 ```
 
 ## Appendix
@@ -415,4 +472,40 @@ plot(mod_full, 1)
 
 ```{r echo = FALSE}
 plot(mod_full, 2)
+```
+
+### 3.II.A.i. Residual plot for log-transformed model
+
+```{r echo = FALSE}
+plot(mod_log, 1)
+```
+
+### 3.II.A.ii. QQ-plot for log-transformed model
+
+```{r echo = FALSE}
+plot(mod_log, 2)
+```
+
+### 3.III.A.i. Coefficients for model that maximizes adjusted R-squared
+
+```{r}
+# Complete sequential replacement procedure for mod_log
+var_sel <- regsubsets(log(delivery_time) ~ total_items + I(total_items^2) + 
+                                   max_item_price + total_busy_dashers +
+                                   total_outstanding_orders +
+                                   estimated_store_to_consumer_driving_duration +
+                                   market_id + meal_time + total_items *
+                                   meal_time + I(total_items^2) * meal_time +
+                                   max_item_price * meal_time +
+                                   total_busy_dashers * meal_time +
+                                   total_outstanding_orders * meal_time +
+                                   estimated_store_to_consumer_driving_duration *
+                                   meal_time + market_id * meal_time,
+                      data = delivery_clean,
+                      method = 'seqrep',
+                      nvmax = 50,
+                      really.big = TRUE)
+
+# Returns coefficients of model that maximizes adjusted R-squared
+coef(var_sel, which.max(summary(var_sel)$adjr2))
 ```
