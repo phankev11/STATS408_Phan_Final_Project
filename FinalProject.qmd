@@ -391,7 +391,7 @@ ks.test(residuals(mod_best), 'pnorm', sd = summary(mod_log)$s)
 The resulting linear regression line that I find to model delivery time is (*see Appendix 4.I*):
 
 $$
-\hat{\text{delivery_time}} = 3.521 - 0.1960(\text{market_id}_2) - 0.05494(\text{market_id}_3) - 0.1687(\text{market_id}_4)
+\hat{\log(\text{delivery_time})} = 3.521 - 0.1960(\text{market_id}_2) - 0.05494(\text{market_id}_3) - 0.1687(\text{market_id}_4)
 $$
 
 $$
@@ -457,6 +457,70 @@ $$
 $$
 + \text{ } 0.002102(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{lunch}})
 $$
+
+### I. Coefficients
+
+-   `market_id2`: holding all other variables constant, a DoorDash delivery in city/region 2 is expected to decrease delivery time by 0.1959 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id3`: holding all other variables constant, a DoorDash delivery in city/region 3 is expected to decrease delivery time by 0.05494 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id4`: holding all other variables constant, a DoorDash delivery in city/region 4 is expected to decrease delivery time by 0.1687 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id5`: holding all other variables constant, a DoorDash delivery in city/region 5 is expected to decrease delivery time by 0.08057 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id6`: holding all other variables constant, a DoorDash delivery in city/region 6 is expected to decrease delivery time by 0.1175 log minutes compared a DoorDash order in city/region 1
+
+-   `total_items`: for a 1% increase in the total items in a DoorDash order, the expected delivery time will increase by 0.01008 log minutes, holding all other variables constant
+
+-   `max_item_price`: for a 1% increase in dollars of the highest priced item in a DoorDash order, the expected delivery time is expected to increase by 0.0009715 log minutes, holding all other variables constant
+
+-   `total_outstanding_orders`: for a 1% increase in orders within 10 miles being processed at the time of order submission, the expected delivery time is expected to decrease by 0.001467 log minutes, holding all other variables constant
+
+-   `estimated_order_place_duration`: for a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order, the expected delivery time is expected to increase by 0.01345 log minutes, holding all other variables constant
+
+-   `estimated_store_to_consumer_driving_direction`: for a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer, the expected delivery time is expected to increase by 0.02765 log minutes, holding all other variables constant
+
+-   `meal_time_dinner`: holding all other variables constant, a DoorDash delivery during dinner hours is expected to decrease delivery time by 0.1992 log minutes compared to a DoorDash delivery during breakfast hours
+
+-   `meal_time_late_night`: holding all other variables constant, a DoorDash delivery during late night hours is expected decrease delivery time by 0.3887 log minutes compared to a DoorDash delivery during breakfast hours
+
+-   `meal_time_lunch`: holding all other variables constant, a DoorDash delivery during lunch hours is expected to decrease delivery time by 0.2757 log minutes compared to a DoorDash delivery during breakfast hours
+
+-   `total_items:meal_time_dinner`: holding all other variables constant, a 1% increase in the total items in a DoorDash order during dinner hours is expected to increase delivery time by 0.004941 log minutes compared to a 1% increase in the total items in a DoorDash order during breakfast hours
+
+-   `total_items:meal_time_late_night`: holding all other variables constant, a 1% increase in the total items in a DoorDash order during late night hours is expected to decrease delivery time by 0.0004345 log minutes compared to a 1% increase in the total items in a DoorDash order during breakfast hours
+
+-   `total_items:meal_time_lunch`: holding all other variables constant, a 1% increase in the total items in a DoorDash order during lunch hours is expected to increase delivery time by 0.01080 log minutes compared to a 1% increase in the total items in a DoorDash order during breakfast hours
+
+-   `max_item_price:meal_time_dinner`: holding all other variables constant, a 1% increase in dollars of the highest priced item in a DoorDash order during dinner hours is expected to increase delivery time by 0.005393 log minutes compared to a 1% increase in dollars of the highest priced item in a DoorDash order during breakfast hours
+
+-   `max_item_price:meal_time_late_night`: holding all other variables constant, a 1% increase in dollars of the highest priced item in a DoorDash order during late night hours is expected to increase delivery time by 0.005661 log minutes compared to a 1% increase in dollars of the highest priced item in a DoorDash order during breakfast hours
+
+-   `max_item_price:meal_time_lunch`: holding all other variables constant, a 1% increase in dollars of the highest priced item in a DoorDash order during lunch hours is expected to increase delivery time by 0.005412 log minutes compared to a 1% increase in dollars of the highest priced item in a DoorDash order during breakfast hours
+
+-   `total_outstanding_orders:meal_time_dinner`: holding all other variables constant, a 1% increase in orders within 10 miles being processed at the time of order submission during dinner hours is expected to increase delivery time by 0.003356 log minutes compared to a 1% increase in orders within 10 miles being processed at the time of order submission during breakfast hours
+
+-   `total_outstanding_orders:meal_time_late_night`: holding all other variables constant, a 1% increase in orders within 10 miles being processed at the time of order submission during late night hours is expected to increase delivery time by 0.005010 log minutes compared to a 1% increase in orders within 10 miles being processed at the time of order submission during breakfast hours
+
+-   `total_outstanding_orders:meal_time_lunch`: holding all other variables constant, a 1% increase in orders within 10 miles being processed at the time of order submission during lunch hours is expected to increase delivery time by 0.003883 log minutes compared to a 1% increase in orders within 10 miles being processed at the time of order submission during breakfast hours
+
+-   `estimated_order_place_duration:meal_time_dinner`: holding all other variables constant, a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during dinner hours is expected to increase delivery time by 0.01503 log minutes compared to a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during breakfast hours
+
+-   `estimated_order_place_duration:meal_time_late_night`: holding all other variables constant, a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during late night hours is expected to increase delivery time by 0.01947 log minutes compared to a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during breakfast hours
+
+-   `estimated_order_place_duration:meal_time_lunch`: holding all other variables constant, a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during lunch hours is expected to increase delivery time by 0.005897 log minutes compared to a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during breakfast hours
+
+-   `estimated_store_to_consumer_duration:meal_time_dinner`: holding all other variables constant, a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during dinner hours is expected to decrease delivery time by 0.001710 log minutes compared to a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during breakfast hours
+
+-   `estimated_store_to_consumer_duration:meal_time_late_night`: holding all other variables constant, a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during late night hours is expected to increase delivery time by 0.001068 log minutes compared to a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during breakfast hours
+
+-   `estimated_store_to_consumer_duration:meal_time_lunch`: holding all other variables constant, a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customerduring lunch hours is expected to increase delivery time by 0.002102 log minutes compared to a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during breakfast hours
+
+## 5. Evaluation and Discussion
+
+Based on the adjusted-$R^2$ value, my best model can explain 21.41% of the variance in the data. While that may be low in terms of being able to predict the expected delivery time, I think that it is still a good model based on the fact that it is easily interpretable. While there are many methods that we have covered in class that I could have used on this dataset to better predict delivery time, such as weighted least regression, LOESS regression, LASSO and Ridge regression, or K-fold cross validation, the disadvantage with using these more exact, non-linear methods is the loss of interpretability. In other words, precision comes at the cost of interpretability, and in the context of this project, I believe that interpretability is more important. That isn't to say, however, that more precise methods are not worth looking into. Perhaps in the context of a data mining or predicitve analytics class, these methods could be used to improve my model and are worth future investigation.
+
+In terms of interpretability, there are some drawbacks to the dataset I used. For one, factor variables `market_id` in the dataset was not qualified, making me use the number each city/market was quantified with in the regression model; it would have been much easier to interpret if I had information on which city/region each distinct `market_id` represented. Furthermore, because I utilzied a log-transformation to better fit the data, some of the interpretability is loss in having to consider log-units instead of untransformed units. Nonetheless, because of the ease of interpretability of the linear regression model, I was able to gain some valuable insights on what features impacted expected delivery time and by what factor.
 
 ## Appendix
 
