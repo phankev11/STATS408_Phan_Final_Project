@@ -1,0 +1,685 @@
+---
+title: "Final Project"
+author: "Kevin Phan"
+format: 
+  html:
+    self-contained: true
+    embed-resources: true
+editor: visual
+execute: 
+  echo: true
+  include: true
+---
+
+[Link to Project Github Repository](https://github.com/phankev11/STATS408_Phan_Final_Project.git)
+
+```{r}
+# Load required libraries for the project
+library(tidyverse)
+library(lmtest)
+library(leaps)
+library(regclass)
+```
+
+## 1. Introduction
+
+Immediately after work or after school, the first thing I think about is dinner. However, the worst thing imaginable happens: I open my refridgerator and it's empty. I look outside the window and the weather is poor; the last thing I want to do is leave my apartment now. Luckily, with the rise of technology, a meal can be at my doorstep with a few clicks and swipes on my phone. With mobile applications like DoorDash, GrubHub, UberEats, etc., all I need to do is select which restaurant I would like to eat in tonight, choose which meal I would like to have, input my address and payment information, then almost instantly, I am given a receipt and an estimated time of arrival.
+
+While waiting for dinner, I start to wonder what goes into that estimated time of arrival that I seemed to instantaneously receive after placing my order. If the mobile application I used can quickly predict what time I will receive my dinner, then there must be some prediction model that the application uses to determine that estimated arrival time. Intuitively, one can see that many things may influence delivery time, such as the time of the day the order was places, how busy the drivers on the application are, the size of the order, etc. With that in mind, I will focus my project on investigating which features influence delivery time.
+
+## 2. Data Exploration and Preparation
+
+### I. Dataset
+
+For my project, I will be using the [DoorDash ETA Prediction](https://www.kaggle.com/datasets/dharun4772/doordash-eta-prediction/data) dataset. The dataset consists of a subset of DoorDash deliveries ($n = 197428$) that occured from mid-January 2015 to mid-February 2015 in the US West Coast. Each row in the dataset corresponds to one unique delivery and contains data relating to time, the store the order was placed at, the order, the conditions of the DoorDash market at the time the order was placed, and DoorDash-provided estimates.
+
+```{r}
+# Load the dataset
+delivery <- read.csv('Data/doordash.csv')
+```
+
+### II. Dataset Features
+
+The DoorDash ETA Prediction dataset contains the following features:
+
+#### A. Time features
+
+-   `market_id`: given ID number for each city/region DoorDash operates in
+
+-   `created_at`: time order is submitted to DoorDash; *UTC*
+
+-   `actual_delivery_time`: time order is delivered; *UTC*
+
+#### B. Store features
+
+-   `store_id`: given ID number for each unique restaurant
+
+-   `store_primary_category`: restaurant's cuisine
+
+-   `order_protocol`: mode DoorDash order is received by restaurant
+
+#### C. Order features
+
+-   `subtotal`: value of order submitted; *\\\$0.01 USD*
+
+-   `num_distinct_items`: number of items in order
+
+-   `min_item_price`: price of lowest cost item in order; *\\\$0.01 USD*
+
+-   `max_item_price`: price of highest cost item in order; *\\\$0.01 USD*
+
+#### D. Market features
+
+-   `total_onshift_dashers`: number of available dashes within 10 miles or store at time of order submission
+
+-   `total_busy_dashers`: subset of `total_onshift_dashers` already working on different order at time of order submission
+
+-   `total_outstanding_orders`: number of orders within 10 miles being processed at time time of order submission
+
+#### E. DoorDash estimate
+
+-   `estimated_order_place_duration`: estimated time for restaurant to receive order from DoorDash; *seconds*
+
+-   `estimated_store_to_consumer_driving_duration`: estimated travel time between store and customer; *seconds*
+
+### III. Data Cleaning and Feature Engineering
+
+I used the following steps to clean the data and engineer needed features for my analysis:
+
+-   I will not be using any of the store features from the dataset for my analysis, as it seems that they are incomplete and not in line with each other (i.e., each `store_id` does not have a distinct `store_primary_category`), so I omitted those columns from the data
+
+-   I omitted incomplete entries
+
+-   Since `market_id` is a discrete variable, I converted it to datatype factor
+
+-   I created my dependent variable, `total_time`, for the analysis, which stores the time from `created_at` to `actual_delivery_time` in minutes
+
+-   To match the units of `delivery_time`, I converted the DoorDash estimate features from seconds to minutes
+
+-   Given that all of the deliveries occurred in the US West Coast, I converted `created_at` and `actual_delivery_time` from UTC to US/Pacific Time
+
+-   For ease of interpretability, I converted the order features from cents to dollars
+
+-   There appears to be a few different high and low periods during the day that correspond to common meal times (i.e., breakfast, lunch, dinner, late-night) and the times between meal times, respectively (*see Appendix 2.III.A.)*. I created a factor `meal_time` to capture this, defined by:
+
+    -   `breakfast`: `created_at` between 06:00 and 10:00
+
+    -   `lunch`: `created_at` between 10:00 and 16:00
+
+    -   `dinner`: `created_at` between 16:00 and 21:00
+
+    -   `late_night`: `created_at` between 21:00 and 01:00
+
+```{r}
+# Create new clean data table without store features
+delivery_clean <- delivery %>%
+  select(-c(store_id, store_primary_category, order_protocol))
+
+# Omit incomplete entries
+delivery_clean <- delivery_clean %>%
+  na.omit()
+
+# Convert market_id to factor
+delivery_clean$market_id <- delivery_clean$market_id %>%
+  as.factor()
+
+# Create total_time variable
+delivery_clean$delivery_time <- delivery_clean$actual_delivery_time %>%
+  difftime(delivery_clean$created_at) %>%
+  as.numeric()
+
+# Convert DoorDash estimate features from sec to min
+delivery_clean$estimated_order_place_duration <-
+  delivery_clean$estimated_order_place_duration / 60
+
+delivery_clean$estimated_store_to_consumer_driving_duration  <-
+  delivery_clean$estimated_store_to_consumer_driving_duration  / 60
+
+# Set datetime variables to UTC, then convert to PST
+delivery_clean$created_at <- delivery_clean$created_at %>%
+  ymd_hms(tz = 'UTC')
+
+delivery_clean$created_at <- delivery_clean$created_at %>%
+  with_tz(tzone = 'US/Pacific')
+
+delivery_clean$actual_delivery_time <- delivery_clean$actual_delivery_time %>%
+  ymd_hms(tz = 'UTC')
+
+delivery_clean$actual_delivery_time <- delivery_clean$actual_delivery_time %>%
+  with_tz(tzone = 'US/Pacific')
+
+# Convert order features from cents to dollars
+delivery_clean$subtotal <- delivery_clean$subtotal / 100
+
+delivery_clean$min_item_price <- delivery_clean$min_item_price / 100
+
+delivery_clean$max_item_price <- delivery_clean$max_item_price / 100
+
+# Create meal_time variable
+delivery_clean <- delivery_clean %>%
+  mutate(meal_time = case_when(
+                       between(hour(created_at), 0, 1) ~ 'late_night',
+                       between(hour(created_at), 6, 9) ~ 'breakfast',
+                       between(hour(created_at), 10, 15) ~ 'lunch',
+                       between(hour(created_at), 16, 20) ~ 'dinner',
+                       between(hour(created_at), 21, 24) ~ 'late_night'
+                     )
+        )
+```
+
+### IV. Data Exploration
+
+Upon investigating the data, I found the following correlations between delivery time and the features that I will use in my full model:
+
+-   There appears to be a slight linear relationship between `total_items` and `delivery_time` (*See Appendix 2.IV.A.*)
+
+-   There appears to be a slight linear relationship between `max_item_price` and `delivery_time` (*See Appendix 2.IV.B.*)
+
+-   There appears to be a slight linear relationship between `total_outstanding_orders` and `delivery_time` (*See Appendix 2.IV.C.*)
+
+-   There appears to be a slight linear relationship between `estimated_order_place_duration` and `delivery_time` (*See Appendix 2.IV.D.*)
+
+-   There appears to be a slight linear relationship between `estimated_store_to_consumer_driving_duration` and `delivery_time` (*See Appendix 2.IV.E.*)
+
+-   There appears to be a slight difference in `delivery_time` between the different `market_id`s, although the distribution of `delivery_time`s appears similar between the different `market_id`s (*See Appendix 2.IV.F.*)
+
+-   There appears to be a slight difference in `delivery_time` between the different `meal_time`s, and the distribution of `delivery_time`s appears to differ between the different `meal_time`s (*See Appendix 2.IV.G.*)
+
+## 3. Model Building
+
+### I. Full Model
+
+I will start a full model that regresses delivery time on all of the variables in the dataset. Before I complete any transformations on the response variable or the data, I will remove all of the features from the full model that have evidence of multicollinearity based on their GVIF values (*See Appendix 3.I.A.*). This gives us the following model:
+
+```{r}
+# Create full model without multicollinear terms
+mod_full <- lm(delivery_time ~ . - actual_delivery_time
+                                 - total_onshift_dashers
+                                 - total_busy_dashers,
+               data = delivery_clean)
+
+VIF(mod_full)
+```
+
+Furthermore, even though there is no longer any statistically significant evidence of multicollinearity based on the GVIF values for each of the features, I will remove `created_at`, `subtotal`, `num_distinct_items`, and `min_item_price`. Intuitively,
+
+-   `created_at` is a time variable and was used to calculate the feature `meal_time`
+
+-   `subtotal` is related to `total_items`, `min_item_price`, and `max_item_price`
+
+-   `num_distinct_items` is a subset of `total_items`
+
+-   `min_item_price` is related to `max_item_price`
+
+Finally, I will add in an interaction term between `meal_time` and all the other features, as intuitively, the effect on delivery time all of the other features have may differ on the time of the day. This gives me the following maximum model:
+
+```{r}
+mod_max <- lm(delivery_time ~ . - actual_delivery_time
+                                - total_onshift_dashers
+                                - total_busy_dashers
+                                - created_at
+                                - subtotal
+                                - num_distinct_items
+                                - min_item_price
+                                + market_id * meal_time
+                                + total_items * meal_time
+                                + max_item_price * meal_time
+                                + total_outstanding_orders * meal_time
+                                + estimated_order_place_duration * meal_time
+                                + estimated_store_to_consumer_driving_duration 
+                                * meal_time,
+              data = delivery_clean)
+```
+
+#### A. Hypothesis Testing
+
+Our reduced model can be written out as:
+
+$$
+\hat{delivery\_time} = \beta_0
+$$
+
+and our full model can be written out as:
+
+$$ \hat{delivery\_time} = \beta_0 + \beta_1X_1 + \cdots + \beta_{44}X_{44} $$
+
+Thus, we get the following hypotheses:
+
+$$
+H_0: \beta_j = 0 \text{, }1 \leq j \leq 44
+$$
+
+$$
+H_\alpha: \text{One of } \beta_j \neq 0
+$$
+
+Looking at our $F$-statistic and $p$-value from the model, we can reject the null hypothesis and conclude that at least one of the features is statistically significant in predicting delivery time.
+
+```{r}
+# Pull F-statistic from model summary
+summary(mod_max)$fstatistic[[1]]
+# Pull p-value from model summary
+pf(summary(mod_max)$fstatistic[1],
+   summary(mod_max)$fstatistic[2],
+   summary(mod_max)$fstatistic[3],
+   lower.tail = FALSE)
+```
+
+#### B. Checking Model Assumptions
+
+Based on the $F$-statistics and $p$-values given from the Bruesch-Pagan (B-P) and Kolmogorov-Smirnov (K-S) tests, there is statistically significant evidence to say that the assumptions of homoscedastic and normally distributed residuals are violated in the full model. Looking at the shapes of the residual plot (*See Appendix 3.I.B.i.*) and the QQ-plot (*See Appendix 3.I.B.ii.*) from the full model, I will perform a log-transformation on the response variable to see if I can correct the violations of the assumptions.
+
+```{r}
+# Breusch-Pagan test to check homoscedasticity
+bptest(mod_max)
+```
+
+```{r}
+# Kolmogorov-Smirnov test to check normality
+ks.test(residuals(mod_max), 'pnorm', sd = summary(mod_max)$s)
+```
+
+### II. Log-transformation of Delivery Time
+
+Performing a log-transformation on delivery time produces the following model:
+
+```{r}
+# Create log-transformed model
+mod_log <- lm(log(delivery_time) ~ . - actual_delivery_time
+                                     - total_onshift_dashers
+                                     - total_busy_dashers
+                                     - created_at
+                                     - subtotal
+                                     - num_distinct_items
+                                     - min_item_price
+                                     + market_id * meal_time
+                                     + total_items * meal_time
+                                     + max_item_price * meal_time
+                                     + total_outstanding_orders * meal_time
+                                     + estimated_order_place_duration * meal_time
+                                     + estimated_store_to_consumer_driving_duration
+                                     * meal_time,
+              data = delivery_clean)
+```
+
+#### A. Model Assumptions
+
+While, upon visual inspection, the shape of the residual plot (*See Appendix 3.II.A.i.*) and the QQ-plot (*See Appendix 3.II.A.ii.*) appear to fix our violated assumptions from the untransformed model, the $F$-statistics and $p$-values given from the B-P and K-S tests give us statistically significant evidence to conclude that the assumptions of homoscedastic and normally distributed residuals are still violated.
+
+```{r}
+# Breusch-Pagan test to check homoscedasticity
+bptest(mod_log)
+# Kolmogorov-Smirnov test to check normality
+ks.test(residuals(mod_log), 'pnorm', sd = summary(mod_log)$s)
+```
+
+#### B. Checking for better fit
+
+Based on the adjusted-$R^2$ values from the full model and the log-transformed model, the log-transformed model explains more of the variance in delivery time than the untransformed model. Therefore, as I move forward with completing variable selection procedures to fix the violation of the assumptions of the model, I will keep the log-transformation.
+
+```{r}
+# Pull r-squared from full model
+summary(mod_full)$adj.r.squared
+# Pull r-squared from log-transformed model
+summary(mod_log)$adj.r.squared
+```
+
+### III. Variable Selection
+
+#### A. Sequential Replacement to Minimize Adjusted R-squared
+
+First, I will complete a sequential replacement procedure to maximize the adjusted-$R^2$ of my model. Given that my rationale to keep the log-transformed full model was based on more of the variance being able to be explained with the log-transformation of the response variable, I felt that staying consistent in my reasoning would be best for this project (*See Appendix 3.III.A.i.*)
+
+We find that removing the interaction term between `market_id` and `meal_time` maximizes the adjusted-$R^2$:
+
+```{r}
+# Complete sequential replacement procedure for mod_log
+var_sel <- regsubsets(log(delivery_time) ~ . - actual_delivery_time
+                                     - total_onshift_dashers
+                                     - total_busy_dashers
+                                     - created_at
+                                     - subtotal
+                                     - num_distinct_items
+                                     - min_item_price
+                                     + market_id * meal_time
+                                     + total_items * meal_time
+                                     + max_item_price * meal_time
+                                     + total_outstanding_orders * meal_time
+                                     + estimated_order_place_duration * meal_time
+                                     + estimated_store_to_consumer_driving_duration
+                                     * meal_time,
+                      data = delivery_clean,
+                      method = 'seqrep',
+                      nvmax = 50,
+                      really.big = TRUE)
+
+# Create best model
+mod_best <- lm(log(delivery_time) ~ . - actual_delivery_time
+                                     - total_onshift_dashers
+                                     - total_busy_dashers
+                                     - created_at
+                                     - subtotal
+                                     - num_distinct_items
+                                     - min_item_price
+                                     + total_items * meal_time
+                                     + max_item_price * meal_time
+                                     + total_outstanding_orders * meal_time
+                                     + estimated_order_place_duration * meal_time
+                                     + estimated_store_to_consumer_driving_duration
+                                     * meal_time,
+              data = delivery_clean)
+```
+
+```{r}
+# Pull r-squared from full model
+summary(mod_log)$adj.r.squared
+# Pull r-squared from log-transformed model
+summary(var_sel)$adjr2[which.max(summary(var_sel)$adjr2)]
+```
+
+Even ater variable selection, the $F$-statistics and $p$-values given from the B-P and K-S tests give us statistically significant evidence to conclude that the assumptions of homoscedastic and normally distributed residuals are still violated.
+
+```{r}
+# Breusch-Pagan test to check homoscedasticity
+bptest(mod_best)
+# Kolmogorov-Smirnov test to check normality
+ks.test(residuals(mod_best), 'pnorm', sd = summary(mod_log)$s)
+```
+
+## 4. Interpretation of Results
+
+The resulting linear regression line that I find to model delivery time is (*see Appendix 4.I*):
+
+$$
+\hat{\log(\text{delivery_time})} = 3.521 - 0.1960(\text{market_id}_2) - 0.05494(\text{market_id}_3) - 0.1687(\text{market_id}_4)
+$$
+
+$$
+- \text{ }0.08057(\text{market_id}_5) - 0.1175(\text{market_id}_6) + 0.01008(\text{total_items}) + 0.0009715(\text{max_item_price})
+$$
+
+$$
+- \text{ } 0.001467(\text{total_outstanding_orders}) + 0.01345(\text{estimated_order_place_duration})
+$$
+
+$$
++ 0.02765(\text{estimated_store_to_consumer_duration}) - 0.1992(\text{meal_time}_{\text{dinner}})
+$$
+
+$$
+- \text{ } 0.3887(\text{meal_time}_{\text{late_night}}) - 0.2757(\text{meal_time}_{\text{lunch}}) + 0.004941(\text{total_items} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
+- \text{ } 0.0004345(\text{total_items} \times \text{meal_time}_{\text{late_night}}) + 0.01080(\text{total_items} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
++ \text{ } 0.005393(\text{max_item_price} \times \text{meal_time}_{\text{dinner}}) + 0.005661(\text{max_item_price} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.005413(\text{max_item_price} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
++ \text{ } 0.003356(\text{total_outstanding_orders} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
++ \text{ } 0.005010(\text{total_outstanding_orders} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.003883(\text{total_outstanding_orders} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
++ \text{ } 0.01503(\text{estimated_place_duration} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
++ \text{ } 0.01947(\text{estimated_place_duration} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.005897(\text{estimated_place_duration} \times \text{meal_time}_{\text{lunch}})
+$$
+
+$$
+- \text{ } 0.001710(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{dinner}})
+$$
+
+$$
++ \text{ } 0.001068(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{late_night}})
+$$
+
+$$
++ \text{ } 0.002102(\text{estimated_store_to_consumer_driving_duration} \times \text{meal_time}_{\text{lunch}})
+$$
+
+### I. Coefficients
+
+-   `market_id2`: holding all other variables constant, a DoorDash delivery in city/region 2 is expected to decrease delivery time by 0.1959 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id3`: holding all other variables constant, a DoorDash delivery in city/region 3 is expected to decrease delivery time by 0.05494 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id4`: holding all other variables constant, a DoorDash delivery in city/region 4 is expected to decrease delivery time by 0.1687 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id5`: holding all other variables constant, a DoorDash delivery in city/region 5 is expected to decrease delivery time by 0.08057 log minutes compared to a DoorDash order in city/region 1
+
+-   `market_id6`: holding all other variables constant, a DoorDash delivery in city/region 6 is expected to decrease delivery time by 0.1175 log minutes compared a DoorDash order in city/region 1
+
+-   `total_items`: for a 1% increase in the total items in a DoorDash order, the expected delivery time will increase by 0.01008 log minutes, holding all other variables constant
+
+-   `max_item_price`: for a 1% increase in dollars of the highest priced item in a DoorDash order, the expected delivery time is expected to increase by 0.0009715 log minutes, holding all other variables constant
+
+-   `total_outstanding_orders`: for a 1% increase in orders within 10 miles being processed at the time of order submission, the expected delivery time is expected to decrease by 0.001467 log minutes, holding all other variables constant
+
+-   `estimated_order_place_duration`: for a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order, the expected delivery time is expected to increase by 0.01345 log minutes, holding all other variables constant
+
+-   `estimated_store_to_consumer_driving_direction`: for a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer, the expected delivery time is expected to increase by 0.02765 log minutes, holding all other variables constant
+
+-   `meal_time_dinner`: holding all other variables constant, a DoorDash delivery during dinner hours is expected to decrease delivery time by 0.1992 log minutes compared to a DoorDash delivery during breakfast hours
+
+-   `meal_time_late_night`: holding all other variables constant, a DoorDash delivery during late night hours is expected decrease delivery time by 0.3887 log minutes compared to a DoorDash delivery during breakfast hours
+
+-   `meal_time_lunch`: holding all other variables constant, a DoorDash delivery during lunch hours is expected to decrease delivery time by 0.2757 log minutes compared to a DoorDash delivery during breakfast hours
+
+-   `total_items:meal_time_dinner`: holding all other variables constant, a 1% increase in the total items in a DoorDash order during dinner hours is expected to increase delivery time by 0.004941 log minutes compared to a 1% increase in the total items in a DoorDash order during breakfast hours
+
+-   `total_items:meal_time_late_night`: holding all other variables constant, a 1% increase in the total items in a DoorDash order during late night hours is expected to decrease delivery time by 0.0004345 log minutes compared to a 1% increase in the total items in a DoorDash order during breakfast hours
+
+-   `total_items:meal_time_lunch`: holding all other variables constant, a 1% increase in the total items in a DoorDash order during lunch hours is expected to increase delivery time by 0.01080 log minutes compared to a 1% increase in the total items in a DoorDash order during breakfast hours
+
+-   `max_item_price:meal_time_dinner`: holding all other variables constant, a 1% increase in dollars of the highest priced item in a DoorDash order during dinner hours is expected to increase delivery time by 0.005393 log minutes compared to a 1% increase in dollars of the highest priced item in a DoorDash order during breakfast hours
+
+-   `max_item_price:meal_time_late_night`: holding all other variables constant, a 1% increase in dollars of the highest priced item in a DoorDash order during late night hours is expected to increase delivery time by 0.005661 log minutes compared to a 1% increase in dollars of the highest priced item in a DoorDash order during breakfast hours
+
+-   `max_item_price:meal_time_lunch`: holding all other variables constant, a 1% increase in dollars of the highest priced item in a DoorDash order during lunch hours is expected to increase delivery time by 0.005412 log minutes compared to a 1% increase in dollars of the highest priced item in a DoorDash order during breakfast hours
+
+-   `total_outstanding_orders:meal_time_dinner`: holding all other variables constant, a 1% increase in orders within 10 miles being processed at the time of order submission during dinner hours is expected to increase delivery time by 0.003356 log minutes compared to a 1% increase in orders within 10 miles being processed at the time of order submission during breakfast hours
+
+-   `total_outstanding_orders:meal_time_late_night`: holding all other variables constant, a 1% increase in orders within 10 miles being processed at the time of order submission during late night hours is expected to increase delivery time by 0.005010 log minutes compared to a 1% increase in orders within 10 miles being processed at the time of order submission during breakfast hours
+
+-   `total_outstanding_orders:meal_time_lunch`: holding all other variables constant, a 1% increase in orders within 10 miles being processed at the time of order submission during lunch hours is expected to increase delivery time by 0.003883 log minutes compared to a 1% increase in orders within 10 miles being processed at the time of order submission during breakfast hours
+
+-   `estimated_order_place_duration:meal_time_dinner`: holding all other variables constant, a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during dinner hours is expected to increase delivery time by 0.01503 log minutes compared to a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during breakfast hours
+
+-   `estimated_order_place_duration:meal_time_late_night`: holding all other variables constant, a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during late night hours is expected to increase delivery time by 0.01947 log minutes compared to a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during breakfast hours
+
+-   `estimated_order_place_duration:meal_time_lunch`: holding all other variables constant, a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during lunch hours is expected to increase delivery time by 0.005897 log minutes compared to a 1% increase in minutes that DoorDash estimates it takes for the restaurant to receive an order during breakfast hours
+
+-   `estimated_store_to_consumer_duration:meal_time_dinner`: holding all other variables constant, a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during dinner hours is expected to decrease delivery time by 0.001710 log minutes compared to a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during breakfast hours
+
+-   `estimated_store_to_consumer_duration:meal_time_late_night`: holding all other variables constant, a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during late night hours is expected to increase delivery time by 0.001068 log minutes compared to a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during breakfast hours
+
+-   `estimated_store_to_consumer_duration:meal_time_lunch`: holding all other variables constant, a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customerduring lunch hours is expected to increase delivery time by 0.002102 log minutes compared to a 1% increase in minutes DoorDash estimates it takes to drive from the restaurant to the customer during breakfast hours
+
+## 5. Evaluation and Discussion
+
+Based on the adjusted-$R^2$ value, my best model can explain 21.41% of the variance in the data. While that may be low in terms of being able to predict the expected delivery time, I think that it is still a good model based on the fact that it is easily interpretable. While there are many methods that we have covered in class that I could have used on this dataset to better predict delivery time, such as weighted least regression, LOESS regression, LASSO and Ridge regression, or K-fold cross validation, the disadvantage with using these more exact, non-linear methods is the loss of interpretability. In other words, precision comes at the cost of interpretability, and in the context of this project, I believe that interpretability is more important. That isn't to say, however, that more precise methods are not worth looking into. Perhaps in the context of a data mining or predicitve analytics class, these methods could be used to improve my model and are worth future investigation.
+
+In terms of interpretability, there are some drawbacks to the dataset I used. For one, factor variables `market_id` in the dataset was not qualified, making me use the number each city/market was quantified with in the regression model; it would have been much easier to interpret if I had information on which city/region each distinct `market_id` represented. Furthermore, because I utilzied a log-transformation to better fit the data, some of the interpretability is loss in having to consider log-units instead of untransformed units. Nonetheless, because of the ease of interpretability of the linear regression model, I was able to gain some valuable insights on what features impacted expected delivery time and by what factor.
+
+## Appendix
+
+### 2.III.A. Box plot of delivery time by hour of day
+
+```{r echo = FALSE}
+# Box plots of delivery time by hour of day
+delivery_clean %>%
+  mutate(hour = as.factor(hour(created_at))) %>%
+  ggplot(aes(x = hour, y = delivery_time)) +
+    geom_boxplot() +
+    ylim(0, 100)
+```
+
+### 2.IV.A. Scatter plot of delivery time by total items
+
+```{r echo = FALSE}
+# Scatter plot of delivery time by total
+delivery_clean %>%
+  ggplot(aes(x = total_items, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x, se = FALSE) +
+  xlim(0, 100) +
+  ylim(0, 500)
+```
+
+### 2.IV.B. Scatter plot of delivery time by max item price
+
+```{r echo = FALSE}
+# Scatter plot of delivery time by subtotal
+delivery_clean %>%
+  ggplot(aes(x = max_item_price, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x, se = FALSE) +
+  ylim(0, 500)
+```
+
+### 2.IV.C. Scatter plot of delivery time by total outstanding orders
+
+```{r echo = FALSE}
+# Scatter plot of delivery time by total outstanding orders
+delivery_clean %>%
+  ggplot(aes(x = total_outstanding_orders, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.D. Scatter plot of delivery time by estimated order place duration
+
+```{r echo = FALSE}
+# Scatter plot of delivery time by estimated order place duration
+delivery_clean %>%
+  ggplot(aes(x = estimated_order_place_duration, y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.E. Scatter plot of delivery time by estimated store to consumer driving duration
+
+```{r echo = FALSE}
+# Scatter plot of delivery time by estimated store to consumer driving duration
+delivery_clean %>%
+  ggplot(aes(x = estimated_store_to_consumer_driving_duration, 
+             y = delivery_time)) +
+  geom_point() +
+  geom_smooth(formula = y ~ x) +
+  ylim(0, 1000)
+```
+
+### 2.IV.F. Box plots of delivery time by market ID
+
+```{r echo = FALSE}
+# Box plots of delivery time by market ID
+delivery_clean %>%
+  ggplot(aes(x = market_id, y = delivery_time)) +
+  geom_boxplot() +
+  ylim(0, 500)
+```
+
+### 2.IV.G. Box plots of delivery time by meal time
+
+```{r echo = FALSE}
+# Box plots of delivery time by meal time
+delivery_clean %>%
+  ggplot(aes(x = meal_time, y = delivery_time)) +
+  geom_boxplot() +
+  ylim(0, 500)
+```
+
+### 3.I.A. Addressing multicollinearity in the full model
+
+```{r}
+# Starting with full model
+mod_full_1 <- lm(delivery_time ~ .,
+                 data = delivery_clean)
+
+VIF(mod_full_1)
+```
+
+```{r}
+# Removing actual delivery time from full model
+mod_full_2 <- lm(delivery_time ~ . - actual_delivery_time,
+                 data = delivery_clean)
+
+VIF(mod_full_2)
+```
+
+```{r}
+# Removing total onshift dealers from reduced model
+mod_full_3 <- lm(delivery_time ~ . - actual_delivery_time
+                                   - total_onshift_dashers,
+                 data = delivery_clean)
+VIF(mod_full_3)
+```
+
+```{r}
+# Removing total busy dealers from reduced model
+mod_full_4 <- lm(delivery_time ~ . - actual_delivery_time
+                                   - total_onshift_dashers
+                                   - total_busy_dashers,
+                 data = delivery_clean)
+VIF(mod_full_4)
+```
+
+### 3.I.B.i. Residual plot for full model
+
+```{r echo = FALSE}
+plot(mod_full, 1)
+```
+
+### 3.I.B.ii. QQ-plot for full model
+
+```{r echo = FALSE}
+plot(mod_full, 2)
+```
+
+### 3.II.A.i. Residual plot for log-transformed model
+
+```{r echo = FALSE}
+plot(mod_log, 1)
+```
+
+### 3.II.A.ii. QQ-plot for log-transformed model
+
+```{r echo = FALSE}
+plot(mod_log, 2)
+```
+
+### 3.III.A.i. Coefficients for model that maximizes adjusted R-squared
+
+```{r}
+# Returns coefficients of model that maximizes adjusted R-squared
+coef(var_sel, which.max(summary(var_sel)$adjr2))
+```
+
+### 4.I. Summary of best model
+
+```{r}
+summary(mod_best)
+```
